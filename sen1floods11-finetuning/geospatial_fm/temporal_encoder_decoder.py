@@ -69,18 +69,24 @@ class TemporalEncoderDecoder(EncoderDecoder):
     def encode_decode(self, img, img_metas):
         """Encode images with backbone and decode into a semantic segmentation
         map of the same size as input."""
+        # x = self.extract_feat(img)
+        # out = self._decode_head_forward_test(x, img_metas)
+        
+        # #### size calculated over last two dimensions ###
+        # size = img.shape[-2:]
+        
+        # out = resize(
+        #     input=out,
+        #     size=size,
+        #     mode='bilinear',
+        #     align_corners=self.align_corners)
+        # return out
         x = self.extract_feat(img)
-        out = self._decode_head_forward_test(x, img_metas)
-        
-        #### size calculated over last two dimensions ###
-        size = img.shape[-2:]
-        
-        out = resize(
-            input=out,
-            size=size,
-            mode='bilinear',
-            align_corners=self.align_corners)
-        return out
+        seg_logits = self.decode_head.predict(x, img_metas,
+                                              self.test_cfg)
+
+        return seg_logits
+
       
     def slide_inference(self, img, img_meta, rescale):
         """Inference by sliding-window with overlap.
@@ -169,7 +175,7 @@ class TemporalEncoderDecoder(EncoderDecoder):
 
         return seg_logit
 
-    def inference(self, img, img_meta, rescale):
+    def inference(self, img, img_meta, rescale=True):
         """Inference with slide/whole style.
 
         Args:
@@ -186,8 +192,8 @@ class TemporalEncoderDecoder(EncoderDecoder):
         """
 
         assert self.test_cfg.mode in ['slide', 'whole']
-        ori_shape = img_meta[0]['ori_shape']
-        assert all(_['ori_shape'] == ori_shape for _ in img_meta)
+        # ori_shape = img_meta[0]['ori_shape']
+        # assert all(_['ori_shape'] == ori_shape for _ in img_meta)
         if self.test_cfg.mode == 'slide':
             seg_logit = self.slide_inference(img, img_meta, rescale)
         else:

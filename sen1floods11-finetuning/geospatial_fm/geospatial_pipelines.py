@@ -148,7 +148,7 @@ class Reshape(BaseTransform):
     def transform(self, results):
         dim_to_infer = np.where(np.array(self.new_shape) == -1)[0]
 
-        print(f"results gt {results['gt_semantic_seg'].shape}")
+#        print(f"results gt {results['gt_semantic_seg'].shape}")
         
         for key in self.keys:
             if (len(dim_to_infer) > 1) & (self.look_up is not None):
@@ -297,8 +297,8 @@ class LoadGeospatialImageFromFile(BaseTransform):
         results["filename"] = results["img_path"]  # filename
         results["ori_filename"] = results["img_path"] # results["img_info"]["filename"]
         results["img"] = img
-        results["img_shape"] = img.shape
-        results["ori_shape"] = img.shape
+        results["img_shape"] = img.shape[:2]
+        results["ori_shape"] = img.shape[:2]
         # Set initial values for default meta_keys
         results["pad_shape"] = img.shape
         results["scale_factor"] = 1.0
@@ -427,7 +427,7 @@ class PackSegInputs_(BaseTransform):
             - 'data_sample' (obj:`SegDataSample`): The annotation info of the
                 sample.
         """
-        print(f"PackSegData results {results['ori_shape']}")
+        # print(f"PackSegData results {results['ori_shape']}")
         packed_results = dict()
 
         img = results["img"]
@@ -438,8 +438,11 @@ class PackSegInputs_(BaseTransform):
         data_sample.gt_sem_seg = PixelData(**gt_sem_seg_data)
         packed_results["data_samples"] = data_sample
 
-        # print(f"inputs shape: {packed_results['inputs'].shape}")
-        # print(f"PackSegInput packed_result: {packed_results}")
+        img_meta = {}
+        for key in self.meta_keys:
+            if key in results:
+                img_meta[key] = results[key]
+        data_sample.set_metainfo(img_meta)
 
         return packed_results
 

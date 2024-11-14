@@ -11,6 +11,7 @@ from .geospatial_pipelines import (
 from .datasets import GeospatialDataset
 from .temporal_encoder_decoder import TemporalEncoderDecoder
 from .data_preprocessor import SegDataPreProcessor_
+from .encoder_decoder import EncoderDecoder_
 
 __all__ = [
     "GeospatialDataset",
@@ -26,4 +27,5 @@ __all__ = [
     "GeospatialNeck",
     "TorchPermute",
     "SegDataPreprocessor_",
+    "EncoderDecoder_"
 ]

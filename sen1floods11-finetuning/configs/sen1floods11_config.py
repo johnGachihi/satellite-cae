@@ -128,8 +128,8 @@ val_pipeline = [
     # to channels first
     dict(type="TorchPermute", keys=["img"], order=(2, 0, 1)),
     dict(type="TorchNormalize", **img_norm_cfg),
-    dict(type="TorchRandomCrop", crop_size=crop_size),
-    dict(type="Reshape", keys=["gt_semantic_seg"], new_shape=(1, tile_size, tile_size)),
+#     dict(type="TorchRandomCrop", crop_size=crop_size),
+#    dict(type="Reshape", keys=["gt_semantic_seg"], new_shape=(1, tile_size, tile_size)),
     dict(type="CastTensor", keys=["gt_semantic_seg"], new_type="torch.LongTensor"),
     dict(type="PackSegInputs_", meta_keys=('img_id', 'img_path', 'ori_shape', 'img_shape',
                    'scale_factor')),
@@ -202,7 +202,7 @@ val_dataloader = dict(
         pipeline=val_pipeline,   # Use your defined test pipeline for validation
         ignore_index=ignore_index,
         # split=splits["val"],      # Validation split file path
-        gt_seg_map_loader_cfg=dict(nodata=label_nodata, nodata_replace=ignore_index),
+#        gt_seg_map_loader_cfg=dict(nodata=label_nodata, nodata_replace=ignore_index),
         metainfo=dict(classes=CLASSES)
     )
 )
@@ -248,56 +248,6 @@ default_hooks = dict(
     )
 )
 
-# data = dict(
-#     samples_per_gpu=samples_per_gpu,
-#     workers_per_gpu=num_workers,
-#     train=dict(
-#         type=dataset_type,
-#         CLASSES=CLASSES,
-#         data_root=data_root,
-#         img_dir=img_dir,
-#         ann_dir=ann_dir,
-#         img_suffix=img_suffix,
-#         seg_map_suffix=seg_map_suffix,
-#         pipeline=train_pipeline,
-#         ignore_index=ignore_index,
-#         split=splits["train"],
-#     ),
-#     val=dict(
-#         type=dataset_type,
-#         CLASSES=CLASSES,
-#         data_root=data_root,
-#         img_dir=img_dir,
-#         ann_dir=ann_dir,
-#         img_suffix=img_suffix,
-#         seg_map_suffix=seg_map_suffix,
-#         pipeline=test_pipeline,
-#         ignore_index=ignore_index,
-#         split=splits["val"],
-#         gt_seg_map_loader_cfg=dict(nodata=label_nodata, nodata_replace=ignore_index),
-#     ),
-#     test=dict(
-#         type=dataset_type,
-#         CLASSES=CLASSES,
-#         data_root=data_root,
-#         img_dir=img_dir,
-#         ann_dir=ann_dir,
-#         img_suffix=img_suffix,
-#         seg_map_suffix=seg_map_suffix,
-#         pipeline=test_pipeline,
-#         ignore_index=ignore_index,
-#         split=splits["test"],
-#         gt_seg_map_loader_cfg=dict(nodata=label_nodata, nodata_replace=ignore_index),
-#     ),
-# )
-
-# evaluation = dict(
-#     interval=eval_epoch_interval,
-#     metric="mIoU",
-#     pre_eval=True,
-#     save_best="mIoU",
-#     by_epoch=True,
-# )
 
 # Training
 train_cfg = dict(type='EpochBasedTrainLoop', max_epochs=epochs, val_interval=1)
@@ -359,7 +309,7 @@ norm_cfg = dict(type="BN", requires_grad=True)
 ce_weights = [0.3, 0.7]
 
 model = dict(
-    type="EncoderDecoder",
+    type="EncoderDecoder_",
     data_preprocessor=dict(
         type='SegDataPreProcessor_',
         size=(img_size, img_size),
