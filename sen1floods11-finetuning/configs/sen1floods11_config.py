@@ -1,7 +1,7 @@
 import os
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
-# base options
+
 default_scope = "mmseg"
 
 env_cfg = dict(
@@ -9,6 +9,37 @@ env_cfg = dict(
     mp_cfg=dict(mp_start_method='fork', opencv_num_threads=0),
     dist_cfg=dict(backend='nccl'),
 )
+
+default_hooks = dict(
+    timer=dict(type='IterTimerHook'),
+    logger=dict(type='LoggerHook', interval=50),
+    param_scheduler=dict(type='ParamSchedulerHook'),
+    checkpoint=dict(type='CheckpointHook', interval=1),
+    sampler_seed=dict(type='DistSamplerSeedHook'),
+    visualization=dict(type='SegVisualizationHook'))
+
+### Wandb
+wandb_kwargs = dict(
+    project='mae-sen1floods11-finetuning',
+    entity='johngachihi-carnegie-mellon-university',
+    #  name='your_run_name',
+    resume='allow',
+    dir='output'
+)
+
+vis_backends = [
+    dict(type='LocalVisBackend'), 
+    dict(
+        type='WandbVisBackend',
+        init_kwargs=dict(wandb_kwargs)
+    )
+]
+visualizer = dict(
+    type='SegLocalVisualizer', vis_backends=vis_backends, name='visualizer')
+
+# custom_hooks = [dict(type='WandbLoggerHook', interval=50)]
+
+
 
 log_level = "INFO"
 load_from = None
@@ -20,7 +51,7 @@ custom_imports = dict(imports=["geospatial_fm"])
 ### Configs
 # Data
 # TO BE DEFINED BY USER: Data root to sen1floods11 downloaded dataset
-data_root = "/home/ubuntu/satellite-cae/SatMAE/data/sen1floods11/"
+data_root = "/home/ubuntu/satellite-cae/data/sen1floods11"
 
 dataset_type = "GeospatialDataset"
 num_classes = 2
@@ -31,8 +62,8 @@ samples_per_gpu = 5
 CLASSES = (0, 1)
 
 img_norm_cfg = dict(
-    means=[0.14245495, 0.13921481, 0.12434631, 0.31420089, 0.20743526, 0.12046503],
-    stds=[0.04036231, 0.04186983, 0.05267646, 0.0822221, 0.06834774, 0.05294205],
+    means=[0.14245495, 0.13921481, 0.12434631, 0.5, 0.5, 0.5, 0.5, 0.31420089, 0.5, 0.5, 0.20743526, 0.12046503],
+    stds=[0.04036231, 0.04186983, 0.05267646, 0.5, 0.5, 0.5, 0.5, 0.0822221, 0.5, 0.5, 0.06834774, 0.05294205],
 )
 
 bands = [1, 2, 3, 8, 11, 12]
@@ -73,7 +104,7 @@ eval_epoch_interval = 5
 
 # TO BE DEFINED BY USER: Save directory
 experiment = "<experiment name>"
-project_dir = "<project dir>"
+project_dir = "output"
 work_dir = os.path.join(project_dir, experiment)
 save_path = work_dir
 
@@ -169,8 +200,8 @@ train_dataloader = dict(
         CLASSES=CLASSES,
         data_root=data_root,
         data_prefix=dict(     # Use data_prefix to specify directories
-            img_path='v1.1/data/flood_events/HandLabeled/S2Hand',
-            seg_map_path='v1.1/data/flood_events/HandLabeled/LabelHand',
+            img_path='train/s2',
+            seg_map_path='train/labelhand',
         ),
         # img_dir=img_dir,
         # ann_dir=ann_dir,
@@ -192,8 +223,8 @@ val_dataloader = dict(
         CLASSES=CLASSES,
         data_root=data_root,
         data_prefix=dict(     # Use data_prefix to specify directories
-            img_path='v1.1/data/flood_events/HandLabeled/S2Hand',
-            seg_map_path='v1.1/data/flood_events/HandLabeled/LabelHand',
+            img_path='val/s2',
+            seg_map_path='val/labelhand',
         ),
         # img_dir=img_dir,
         # ann_dir=ann_dir,
@@ -217,8 +248,8 @@ test_dataloader = dict(
         CLASSES=CLASSES,
         data_root=data_root,
         data_prefix=dict(     # Use data_prefix to specify directories
-            img_path='v1.1/data/flood_events/HandLabeled/S2Hand',
-            seg_map_path='v1.1/data/flood_events/HandLabeled/LabelHand',
+            img_path='test/s2',
+            seg_map_path='test/labelhand',
         ),
         # img_dir=img_dir,
         # ann_dir=ann_dir,
