@@ -1,0 +1,16 @@
+class BasicVAE(nn.Module):
+
+    def get_codebook_indices(self, images):
+            raise NotImplementedError()
+
+    def decode(self, img_seq):
+            raise NotImplementedError()
+
+    def get_codebook_probs(self, img_seq):
+            raise NotImplementedError()
+
+    def get_image_tokens_size(self):
+            pass
+
+    def get_image_size(self):
+            pass~
