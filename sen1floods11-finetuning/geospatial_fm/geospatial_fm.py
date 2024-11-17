@@ -1,3 +1,4 @@
+
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 # All rights reserved.
 
@@ -546,8 +547,12 @@ def get_2d_sincos_pos_embed(embed_dim, grid_size, cls_token=False):
 class VisionTransformer_(timm.models.vision_transformer.VisionTransformer):
     """ Vision Transformer with support for global average pooling
     """
-    def __init__(self, global_pool=False, **kwargs):
-        super(VisionTransformer_, self).__init__(global_pool="", num_classes=0, **kwargs)
+    def __init__(self, global_pool=False, pretrained_weights=None, **kwargs):
+        super(VisionTransformer_, self).__init__(
+            global_pool="", num_classes=0, embed_dim=768, depth=12,
+            num_heads=12, mlp_ratio=4, qkv_bias=True,
+            norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs
+        )
 
         # Added by Samar, need default pos embedding
         pos_embed = get_2d_sincos_pos_embed(self.pos_embed.shape[-1], int(self.patch_embed.num_patches ** .5),
@@ -562,6 +567,30 @@ class VisionTransformer_(timm.models.vision_transformer.VisionTransformer):
 
             del self.norm  # remove the original norm
 
+        if pretrained_weights:
+            checkpoint = torch.load(pretrained_weights, map_location="cpu")
+            checkpoint_model = checkpoint['model']
+            state_dict = self.state_dict()
+
+            for k in ['pos_embed', 'patch_embed.proj.weight', 'patch_embed.proj.bias', 'head.weight', 'head.bias']:
+                if k in checkpoint_model and checkpoint_model[k].shape != state_dict[k].shape:
+                    print(f"Removing key {k} from pretrained checkpoint")
+                    del checkpoint_model[k]
+
+            interpolate_pos_embed(self, checkpoint_model)
+
+            # load pre-trained model
+            msg = self.load_state_dict(checkpoint_model, strict=False)
+            print(msg)
+
+            # TODO: change assert msg based on patch_embed
+            
+            print(set(msg.missing_keys))
+            # assert set(msg.missing_keys) == {'head.weight', 'head.bias', 'fc_norm.weight', 'fc_norm.bias'}
+            
+            # trunc_normal_(model.head.weight, std=2e-5)
+            
+            
     def forward_features(self, x):
         B = x.shape[0]
         x = self.patch_embed(x)
@@ -583,6 +612,37 @@ class VisionTransformer_(timm.models.vision_transformer.VisionTransformer):
 
         return outcome
 
+# --------------------------------------------------------
+# Interpolate position embeddings for high-resolution
+# References:
+# DeiT: https://github.com/facebookresearch/deit
+# --------------------------------------------------------
+def interpolate_pos_embed(model, checkpoint_model):
+    if 'pos_embed' in checkpoint_model:
+        pos_embed_checkpoint = checkpoint_model['pos_embed']
+        embedding_size = pos_embed_checkpoint.shape[-1]
+        try:
+            num_patches = model.patch_embed.num_patches
+        except AttributeError as err:
+            num_patches = model.patch_embed[0].num_patches
+        num_extra_tokens = model.pos_embed.shape[-2] - num_patches
+        # height (== width) for the checkpoint position embedding
+        orig_size = int((pos_embed_checkpoint.shape[-2] - num_extra_tokens) ** 0.5)
+        # height (== width) for the new position embedding
+        new_size = int(num_patches ** 0.5)
+        # class_token and dist_token are kept unchanged
+        if orig_size != new_size:
+            print("Position interpolate from %dx%d to %dx%d" % (orig_size, orig_size, new_size, new_size))
+            extra_tokens = pos_embed_checkpoint[:, :num_extra_tokens]
+            # only the position tokens are interpolated
+            pos_tokens = pos_embed_checkpoint[:, num_extra_tokens:]
+            pos_tokens = pos_tokens.reshape(-1, orig_size, orig_size, embedding_size).permute(0, 3, 1, 2)
+            pos_tokens = torch.nn.functional.interpolate(
+                pos_tokens, size=(new_size, new_size), mode='bicubic', align_corners=False)
+            pos_tokens = pos_tokens.permute(0, 2, 3, 1).flatten(1, 2)
+            new_pos_embed = torch.cat((extra_tokens, pos_tokens), dim=1)
+            checkpoint_model['pos_embed'] = new_pos_embed
+    
 # Copyright (c) OpenMMLab. All rights reserved.
 import warnings
 from abc import ABCMeta, abstractmethod

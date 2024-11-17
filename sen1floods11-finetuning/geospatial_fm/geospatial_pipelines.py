@@ -73,6 +73,7 @@ class BandsExtract(BaseTransform):
         """
 
         if self.bands is not None:
+            # print(f"BandsExtract: {results['img'].shape}")
             results["img"] = results["img"][..., self.bands]
 
         return results

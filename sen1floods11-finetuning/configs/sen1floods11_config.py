@@ -62,11 +62,11 @@ samples_per_gpu = 5
 CLASSES = (0, 1)
 
 img_norm_cfg = dict(
-    means=[0.14245495, 0.13921481, 0.12434631, 0.5, 0.5, 0.5, 0.5, 0.31420089, 0.5, 0.5, 0.20743526, 0.12046503],
-    stds=[0.04036231, 0.04186983, 0.05267646, 0.5, 0.5, 0.5, 0.5, 0.0822221, 0.5, 0.5, 0.06834774, 0.05294205],
+    means=[0.14245495, 0.13921481, 0.12434631, 0.5, 0.5, 0.5, 0.5, 0.31420089, 0.5, 0.5, 0.20743526, 0.12046503, 0.5],
+    stds=[0.04036231, 0.04186983, 0.05267646, 0.5, 0.5, 0.5, 0.5, 0.0822221, 0.5, 0.5, 0.06834774, 0.05294205, 0.5],
 )
 
-bands = [1, 2, 3, 8, 11, 12]
+bands = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 tile_size = img_size
 orig_nsize = 512
 crop_size = (tile_size, tile_size)
@@ -348,7 +348,7 @@ model = dict(
     ),
     backbone=dict(
         type="VisionTransformer_",
-        # pretrained=pretrained_weights_path,
+        pretrained_weights="/home/ubuntu/satellite-cae/SatMAE/output_dir/checkpoint-99.pth",
         img_size=img_size,
         patch_size=patch_size,
         # num_frames=num_frames,
