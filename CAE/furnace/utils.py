@@ -23,7 +23,7 @@ from pathlib import Path
 
 import torch
 import torch.distributed as dist
-from torch._six import inf
+from torch import inf
 from models.modeling_discrete_vae import Dalle_VAE, DiscreteVAE, VGGAN
 
 from tensorboardX import SummaryWriter
@@ -286,9 +286,8 @@ def init_distributed_mode(args):
     elif 'SLURM_PROCID' in os.environ:
         args.rank = int(os.environ['SLURM_PROCID'])
         args.gpu = args.rank % torch.cuda.device_count()
-
-    if True:
- #       print('init_distr_mode Not using distributed mode')
+    else:
+        print('Not using distributed mode')
         args.distributed = False
         return
 

@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from functools import partial
+# from timm.models.vision_transformer import PatchEmbed, Block
 from models.modeling_finetune import PatchEmbed, DropPath, Mlp
 from timm.models.registry import register_model
 from timm.models.layers import trunc_normal_ as __call_trunc_normal_
@@ -15,45 +16,37 @@ def trunc_normal_(tensor, mean=0., std=1.):
 class Attention(nn.Module):
     def __init__(
             self, dim, num_heads=8, qkv_bias=False, qk_scale=None, attn_drop=0.,
-            proj_drop=0., window_size=None, attn_head_dim=None):
+            proj_drop=0., window_size=None, attn_head_dim=None, norm_layer: nn.Module = nn.LayerNorm):
         super().__init__()
         self.num_heads = num_heads
         head_dim = dim // num_heads
+        self.head_dim = head_dim
         if attn_head_dim is not None:
             head_dim = attn_head_dim
         all_head_dim = head_dim * self.num_heads
         self.scale = qk_scale or head_dim ** -0.5
 
-        self.qkv = nn.Linear(dim, all_head_dim * 3, bias=False)
-        if qkv_bias:
-            self.q_bias = nn.Parameter(torch.zeros(all_head_dim))
-            self.v_bias = nn.Parameter(torch.zeros(all_head_dim))
-        else:
-            self.q_bias = None
-            self.v_bias = None
+        self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
+        # self.q_norm = norm_layer(self.head_dim) if qk_norm else nn.Identity()
+        # self.k_norm = norm_layer(self.head_dim) if qk_norm else nn.Identity()
         
         self.attn_drop = nn.Dropout(attn_drop)
-        self.proj = nn.Linear(all_head_dim, dim)
+        self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
 
     def forward(self, x, bool_masked_pos=None):
 
         B, N, C = x.shape
-        qkv_bias = None
-        if self.q_bias is not None:
-            qkv_bias = torch.cat((self.q_bias, torch.zeros_like(self.v_bias, requires_grad=False), self.v_bias))
 
-        qkv = F.linear(input=x, weight=self.qkv.weight, bias=qkv_bias)
-        qkv = qkv.reshape(B, N, 3, self.num_heads, -1).permute(2, 0, 3, 1, 4)
-        q, k, v = qkv[0], qkv[1], qkv[2]
-        
-        q = q * self.scale
-        attn = (q @ k.transpose(-2, -1))    # (B, N_head, N, N)
-        
-        attn = attn.softmax(dim=-1)
-        attn = self.attn_drop(attn)
+        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4)
+        q, k, v = qkv.unbind(0)
 
-        x = (attn @ v).transpose(1, 2).reshape(B, N, -1) 
+        x = F.scaled_dot_product_attention(
+            q, k, v,
+            dropout_p=self.attn_drop.p if self.training else 0.,
+        )
+        
+        x = x.transpose(1, 2).reshape(B, N, C)
         x = self.proj(x)
         x = self.proj_drop(x)
 
@@ -286,17 +279,18 @@ class VisionTransformerEncoder(nn.Module):
         cls_tokens = self.cls_token.expand(batch_size, -1, -1)
 
         # unmasked embeddings
-        x_unmasked = x[~bool_masked_pos].reshape(batch_size, -1, dim)
+        bool_masked_pos_reshaped = bool_masked_pos.reshape(batch_size, seq_len)
+        x_unmasked = x[bool_masked_pos_reshaped == 1].reshape(batch_size, -1, dim)
         x_unmasked = torch.cat((cls_tokens, x_unmasked), dim=1)
 
         if self.pos_embed is not None:
             pos_embed = self.pos_embed.expand(batch_size, self.num_patches+1, dim)
-            pos_embed_unmasked = pos_embed[:,1:][~bool_masked_pos].reshape(batch_size, -1, dim) 
+            pos_embed_unmasked = pos_embed[:,1:][bool_masked_pos_reshaped == 1].reshape(batch_size, -1, dim) 
             pos_embed_unmasked = torch.cat((pos_embed[:,:1], pos_embed_unmasked),dim=1)
             x_unmasked = x_unmasked + pos_embed_unmasked
 
         x_unmasked = self.pos_drop(x_unmasked)
-
+        
         for blk in self.blocks:
             x_unmasked = blk(x_unmasked, bool_masked_pos)
 
@@ -305,8 +299,8 @@ class VisionTransformerEncoder(nn.Module):
         return x_unmasked
 
     def forward(self, x, bool_masked_pos, return_all_tokens=False):
-        x = self.forward_features(x, bool_masked_pos=bool_masked_pos)
-        return x
+        x_unmasked = self.forward_features(x, bool_masked_pos=bool_masked_pos)
+        return x_unmasked
 
 '''
 Latent context regressor + decoder that solves the pretext task.
@@ -314,7 +308,8 @@ Latent context regressor + decoder that solves the pretext task.
 class VisionTransformerNeck(nn.Module):
     def __init__(self, patch_size=16, num_classes=8192, embed_dim=768, depth=6, 
                  num_heads=12, mlp_ratio=4., qkv_bias=True, qk_scale=None, drop_rate=0., attn_drop_rate=0.,
-                 drop_path_rate=0., norm_layer=None, init_values=None, num_patches=196, init_std=0.02, args=None, patch_shape=(14,14)):
+                 drop_path_rate=0., norm_layer=None, init_values=None, num_patches=196, init_std=0.02, args=None, patch_shape=(14,14),
+                 in_chans=13):
         super().__init__()
 
         self.num_features = self.embed_dim = embed_dim
@@ -341,7 +336,8 @@ class VisionTransformerNeck(nn.Module):
 
         self.norm = norm_layer(embed_dim)
         self.norm2 = norm_layer(embed_dim)
-        self.head = nn.Linear(embed_dim, num_classes) if num_classes > 0 else nn.Identity()
+        # self.head = nn.Linear(embed_dim, num_classes) if num_classes > 0 else nn.Identity()
+        self.head = nn.Linear(embed_dim, patch_size**2 * in_chans)
         
         self.init_std = init_std
 
@@ -379,7 +375,7 @@ class VisionTransformerNeck(nn.Module):
     def no_weight_decay(self):
         return {'pos_embed', 'cls_token'}
         
-    def forward(self, x_masked, x_unmasked, pos_embed_masked, pos_embed_unmasked, bool_masked_pos):                
+    def forward(self, x_masked, x_unmasked, pos_embed_masked, pos_embed_unmasked, bool_masked_pos):
         # latent contextual regressor
         for blk in self.regressor_blocks:
             x_masked = blk(x_masked, torch.cat([x_unmasked, x_masked], dim=1), pos_embed_masked, torch.cat([pos_embed_unmasked, pos_embed_masked], dim=1), bool_masked_pos)

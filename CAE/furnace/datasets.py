@@ -10,7 +10,8 @@ from timm.data import create_transform
 
 from dall_e.utils import map_pixels
 from furnace.masking_generator import MaskingGenerator, RandomMaskingGenerator
-from furnace.dataset_folder import ImageFolder
+from furnace.dataset_folder import ImageFolder, SentinelIndividualImageDataset, SentinelNormalize
+
 
 def preprocess_vqgan(x):
     x = 2.*x - 1.
@@ -18,57 +19,24 @@ def preprocess_vqgan(x):
 
 class DataAugmentationForCAE(object):
     def __init__(self, args):
-        imagenet_default_mean_and_std = args.imagenet_default_mean_and_std
-        mean = IMAGENET_INCEPTION_MEAN if not imagenet_default_mean_and_std else IMAGENET_DEFAULT_MEAN
-        std = IMAGENET_INCEPTION_STD if not imagenet_default_mean_and_std else IMAGENET_DEFAULT_STD
+        mean = (1370.19151926, 1184.3824625 , 1120.77120066, 1136.26026392,
+                 1263.73947144, 1645.40315151, 1846.87040806, 1762.59530783,
+                 1972.62420416,  582.72633433,   14.77112979, 1732.16362238, 1247.91870117)
+        std = (633.15169573,  650.2842772 ,  712.12507725,  965.23119807,
+                948.9819932 , 1108.06650639, 1258.36394548, 1233.1492281 ,
+                1364.38688993,  472.37967789,   14.3114637 , 1310.36996126, 1087.6020813)
 
-        if args.color_jitter > 0:
-            self.common_transform = transforms.Compose([
-                transforms.ColorJitter(args.color_jitter, args.color_jitter, args.color_jitter),
-                transforms.RandomHorizontalFlip(p=0.5),
-                RandomResizedCropAndInterpolationWithTwoPic(
-                    size=args.input_size, second_size=args.second_input_size,
-                    interpolation=args.train_interpolation, second_interpolation=args.second_interpolation,
-                    scale=(args.crop_min_size, args.crop_max_size),
-                ),
-            ])
-        else:
-            self.common_transform = transforms.Compose([
-                transforms.RandomHorizontalFlip(p=0.5),
-                RandomResizedCropAndInterpolationWithTwoPic(
-                    size=args.input_size, second_size=args.second_input_size,
-                    interpolation=args.train_interpolation, second_interpolation=args.second_interpolation,
-                    scale=(args.crop_min_size, args.crop_max_size),
-                ),
-            ])
-
-        self.patch_transform = transforms.Compose([
-#            transforms.ToTensor(),
-            transforms.Normalize(
-                mean=0.5,
-                std=0.5)
+        self.transform = transforms.Compose([
+            SentinelNormalize(mean, std),
+            transforms.ToTensor(),
+            transforms.RandomResizedCrop(args.input_size, scale=(0.2, 1.0), interpolation=transforms.InterpolationMode.BICUBIC),
+            transforms.RandomHorizontalFlip(),
+            # RandomResizedCropAndInterpolationWithTwoPic(
+            #     size=args.input_size, second_size=args.second_input_size,
+            #     interpolation=args.train_interpolation, second_interpolation=args.second_interpolation,
+            #     scale=(args.crop_min_size, args.crop_max_size),
+            # ),
         ])
-
-        if args.discrete_vae_type == "dall-e":
-            self.visual_token_transform = transforms.Compose([
-#                transforms.ToTensor(),
-                map_pixels,
-            ])
-        elif args.discrete_vae_type == "vqgan_gumbel_f8_8192":
-            self.visual_token_transform = transforms.Compose([
-#                transforms.ToTensor(),
-                preprocess_vqgan,
-            ])
-        elif args.discrete_vae_type == "customized":
-            self.visual_token_transform = transforms.Compose([
-#                transforms.ToTensor(),
-                transforms.Normalize(
-                    mean=0.5,
-                    std=0.5,
-                ),
-            ])
-        else:
-            raise NotImplementedError()
         
         if args.mask_generator == 'block':
             self.masked_position_generator = MaskingGenerator(
@@ -83,11 +51,8 @@ class DataAugmentationForCAE(object):
         
 
     def __call__(self, image):
-        for_patches, for_visual_tokens = self.common_transform(image)
-
-        return \
-            self.patch_transform(for_patches), self.visual_token_transform(for_visual_tokens), \
-            self.masked_position_generator()
+        return self.transform(image), self.masked_position_generator()
+    
 
     def __repr__(self):
         repr = "(DataAugmentationForCAE,\n"
@@ -98,11 +63,30 @@ class DataAugmentationForCAE(object):
         repr += ")"
         return repr
 
+
+class DataAugmentationForSatelliteCAE(object):
+    def __init__(self, args):
+        mean = [1370.19151926, 1184.3824625 , 1120.77120066, 1136.26026392,
+                1263.73947144, 1645.40315151, 1846.87040806, 1762.59530783,
+                1972.62420416,  582.72633433,   14.77112979, 1732.16362238, 1247.91870117]
+        std = [633.15169573,  650.2842772 ,  712.12507725,  965.23119807,
+               948.9819932 , 1108.06650639, 1258.36394548, 1233.1492281 ,
+               1364.38688993,  472.37967789,   14.3114637 , 1310.36996126, 1087.6020813]
+
+
 def build_cae_pretraining_dataset(args):
     transform = DataAugmentationForCAE(args)
     print("Data Aug = %s" % str(transform))
     return ImageFolder(args.data_path, transform=transform)
 
+def build_cae_pretraining_satellite_dataset(is_train, args):
+    mean = SentinelIndividualImageDataset.mean
+    std = SentinelIndividualImageDataset.std
+    transform = SentinelIndividualImageDataset.build_transform(is_train, args.input_size, mean, std)
+    transform = DataAugmentationForCAE(args)
+    dataset = SentinelIndividualImageDataset(args.data_path, args.csv_path, transform, masked_bands=args.masked_bands,
+                                             dropped_bands=args.dropped_bands)
+    return dataset
 
 def build_dataset(is_train, args):
     transform = build_transform(is_train, args)

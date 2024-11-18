@@ -20,7 +20,6 @@ class VisionTransformerForMaskedImageModeling(nn.Module):
                  use_abs_pos_emb=True, init_std=0.02, args=None, **kwargs):
         super().__init__()
 
-        print("modeling_cae.py", in_chans)
         self.encoder = VisionTransformerEncoder(img_size=img_size, patch_size=patch_size, in_chans=in_chans, 
                  vocab_size=vocab_size, embed_dim=embed_dim, depth=depth,
                  num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
@@ -42,7 +41,7 @@ class VisionTransformerForMaskedImageModeling(nn.Module):
 
         self.pretext_neck = VisionTransformerNeck(patch_size=patch_size, num_classes=args.decoder_num_classes, embed_dim=args.decoder_embed_dim, depth=args.regressor_depth,
             num_heads=args.decoder_num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale, drop_rate=drop_rate, attn_drop_rate=attn_drop_rate,
-            drop_path_rate=drop_path_rate, norm_layer=norm_layer, init_values=args.decoder_layer_scale_init_value, num_patches=self.num_patches, init_std=init_std, args=args)
+                                                  drop_path_rate=drop_path_rate, norm_layer=norm_layer, init_values=args.decoder_layer_scale_init_value, num_patches=self.num_patches, init_std=init_std, in_chans=in_chans, args=args)
 
         # encoder to decoder projection, borrowed from mae.
         if args.decoder_embed_dim != embed_dim:
@@ -107,7 +106,7 @@ class VisionTransformerForMaskedImageModeling(nn.Module):
         Alignment constraint
         '''
         with torch.no_grad():
-            latent_target = self.teacher(x, bool_masked_pos=(~bool_masked_pos))
+            latent_target = self.teacher(x, bool_masked_pos=(1 -bool_masked_pos))
             latent_target = latent_target[:, 1:, :] # remove class token
             if self.encoder_to_decoder is not None:
                 latent_target = self.encoder_to_decoder_norm(self.encoder_to_decoder(latent_target.detach()))
@@ -127,16 +126,19 @@ class VisionTransformerForMaskedImageModeling(nn.Module):
         pos_embed = self.encoder.build_2d_sincos_position_embedding(dim, use_cls_token=True).expand(batch_size, self.num_patches+1, dim).cuda(x_unmasked.device)
 
         # pos embed for masked patches
-        pos_embed_masked = pos_embed[:,1:][bool_masked_pos].reshape(batch_size, -1, dim) 
+        bool_masked_pos_reshaped = bool_masked_pos.reshape(b, -1)
+        pos_embed_masked = pos_embed[:,1:][bool_masked_pos_reshaped == 0].reshape(batch_size, -1, dim) 
 
         # pos embed for unmasked patches
-        pos_embed_unmasked = pos_embed[:,1:][~bool_masked_pos].reshape(batch_size, -1, dim) 
+        pos_embed_unmasked = pos_embed[:,1:][bool_masked_pos_reshaped == 1].reshape(batch_size, -1, dim) 
 
         # masked embedding '''
         x_masked = self.mask_token.expand(batch_size, num_masked_patches, -1)
 
         logits, latent_pred = self.pretext_neck(x_masked, x_unmasked, pos_embed_masked, pos_embed_unmasked, bool_masked_pos)
-        logits = logits.view(-1, logits.shape[2])
+        # [b, num_masked_patches, patch_size^2 * channels]
+        
+        # logits = logits.view(-1, logits.shape[2])
 
         return logits, latent_pred, latent_target
 

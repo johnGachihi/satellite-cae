@@ -6,9 +6,19 @@ from typing import Iterable
 import torch
 import torch.nn as nn
 
+from models.modeling_finetune import PatchEmbed
 import furnace.utils as utils
 import torch.nn.functional as F
 from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
+
+def patchify(imgs, c, p=16):
+    assert imgs.shape[2] == imgs.shape[3] and imgs.shape[2] % p == 0
+
+    h = w = imgs.shape[2] // p
+    x = imgs.reshape(shape=(imgs.shape[0], c, h, p, w, p))
+    x = torch.einsum('nchpwq->nhwpqc', x)
+    x = x.reshape(shape=(imgs.shape[0], h * w, p**2 * c))
+    return x
 
 def loss_selector(loss_type, pred, target):
     if loss_type == 'mse':
@@ -39,25 +49,27 @@ def train_one_epoch(model: torch.nn.Module, d_vae: torch.nn.Module,
                     param_group["weight_decay"] = wd_schedule_values[it]
 
 
-        samples, images, bool_masked_pos = batch
-        images = images.to(device, non_blocking=True)
+        samples, bool_masked_pos = batch
+
+        # images = images.to(device, non_blocking=True)
         samples = samples.to(device, non_blocking=True)
         bool_masked_pos = bool_masked_pos.to(device, non_blocking=True)
-
-#        with torch.no_grad():
-#            input_ids = d_vae.get_codebook_indices(images).flatten(1)
-#            bool_masked_pos = bool_masked_pos.flatten(1).to(torch.bool)
-#            labels = input_ids[bool_masked_pos]
 
         with torch.cuda.amp.autocast():
             outputs, latent, latent_target = model(samples, bool_masked_pos=bool_masked_pos, return_all_tokens=False)
 
-#            loss_main = nn.CrossEntropyLoss()(input=outputs.float(), target=labels)
+            bool_masked_pos_reshaped = bool_masked_pos.reshape(outputs.shape[0], -1)
+
+            # TODO arg-ize c
+            labels = patchify(samples, c=13)[bool_masked_pos_reshaped == 0].reshape(outputs.shape)
+
+            loss_main = ((labels - outputs) ** 2).mean(axis=-1)
+            loss_main = loss_main.sum() / bool_masked_pos.sum() 
             loss_align = args.align_loss_weight * loss_selector('mse', latent.float(), latent_target.detach().float())
-            loss = 0 + loss_align
+            loss = loss_main + loss_align
 
         loss_value = loss.item()
-#        loss_main_value = loss_main.item()
+        loss_main_value = loss_main.item()
         loss_align_value = loss_align.item()
 
         if not math.isfinite(loss_value):
@@ -73,14 +85,14 @@ def train_one_epoch(model: torch.nn.Module, d_vae: torch.nn.Module,
 
         torch.cuda.synchronize()
 
-        mlm_acc = (outputs.max(-1)[1] == labels).float().mean().item()
-        metric_logger.update(mlm_acc=mlm_acc)
-        if log_writer is not None:
-            log_writer.update(mlm_acc=mlm_acc, head="loss")
+        # mlm_acc = (outputs.max(-1)[1] == labels).float().mean().item()
+        # metric_logger.update(mlm_acc=mlm_acc)
+        # if log_writer is not None:
+        #     log_writer.update(mlm_acc=mlm_acc, head="loss")
 
 
         metric_logger.update(loss=loss_value)
-#        metric_logger.update(loss_main=loss_main_value)
+        metric_logger.update(loss_main=loss_main_value)
         metric_logger.update(loss_align=loss_align_value)
         metric_logger.update(loss_scale=loss_scale_value)
         min_lr = 10.

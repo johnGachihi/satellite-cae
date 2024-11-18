@@ -61,7 +61,7 @@ class MaskingGenerator:
 
             delta = self._mask(mask, max_mask_patches)
             mask_count += delta
-        
+
         return mask
 
 

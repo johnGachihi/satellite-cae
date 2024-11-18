@@ -7,13 +7,14 @@ import torch.backends.cudnn as cudnn
 import json
 import os
 import shutil
+import gc
 
 from pathlib import Path
 
 from timm.models import create_model
 from furnace.optim_factory import create_optimizer
 
-from furnace.datasets import build_cae_pretraining_dataset
+from furnace.datasets import build_cae_pretraining_dataset, build_cae_pretraining_satellite_dataset
 from furnace.engine_for_pretraining import train_one_epoch
 from furnace.utils import NativeScalerWithGradNormCount as NativeScaler
 import furnace.utils as utils
@@ -84,6 +85,7 @@ def get_args():
     # Dataset parameters
     parser.add_argument('--data_path', default='/datasets01/imagenet_full_size/061417/', type=str,
                         help='dataset path')
+    parser.add_argument('--csv_path', default="", type=str, help='csv_path')
     parser.add_argument('--imagenet_default_mean_and_std', default=False, action='store_true')
 
     parser.add_argument('--output_dir', default='',
@@ -160,6 +162,11 @@ def get_args():
     # init func, borrowed from BEiT
     parser.add_argument('--fix_init_weight', action='store_true', default=False, help='if true, the fix_init_weight() func will be activated')
 
+    # Satellite
+    parser.add_argument('--masked_bands', type=int, nargs='+', default=None,
+                        help='Sequence of band indices to mask (with mean val) in sentinel dataset')
+    parser.add_argument('--dropped_bands', type=int, nargs='+', default=None,
+                        help="Which bands (0 indexed) to drop from sentinel data.")
 
     return parser.parse_args()
 
@@ -173,7 +180,7 @@ def get_model(args):
         drop_block_rate=None,
         use_abs_pos_emb=args.abs_pos_emb,
         init_values=args.layer_scale_init_value,
-        in_chans=6,
+        in_chans=13,  # TODO: Make this an argument
         args=args,
     )
 
@@ -181,6 +188,13 @@ def get_model(args):
 
 
 def main(args):
+    torch.cuda.empty_cache()
+    gc.collect()
+
+    # Monitor memory usage
+    print(f"GPU Memory: {torch.cuda.memory_allocated() / 1e9:.2f} GB")
+
+    
     utils.init_distributed_mode(args)
 
     device = torch.device(args.device)
@@ -199,7 +213,7 @@ def main(args):
     args.patch_size = patch_size
 
     # get dataset
-    dataset_train = build_cae_pretraining_dataset(args)
+    dataset_train = build_cae_pretraining_satellite_dataset(is_train=True, args=args)
 
     # prepare discrete vae
     d_vae = utils.create_d_vae(

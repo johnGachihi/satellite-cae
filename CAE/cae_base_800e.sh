@@ -2,7 +2,8 @@ tmp_my_name=${0##*/}
 my_name=${tmp_my_name%.*}
 
 OUTPUT_DIR='./output/'$my_name
-DATA_PATH=/home/hp/CAE/data
+DATA_PATH=/home/ubuntu/satellite-cae/SatMAE/data/fmow-sentinel/train
+CSV_PATH='/home/ubuntu/satellite-cae/SatMAE/data/sampled_by_location.csv'
 TOKENIZER_PATH=./dall_e_tokenizer_weight
 
 # ADDRESS=0
@@ -10,12 +11,13 @@ TOKENIZER_PATH=./dall_e_tokenizer_weight
 # RANK=RANK_FOR_THIS_MACHINE                                                                                                                        
 
 # ============================ pretraining ============================
-OMP_NUM_THREADS=1 python3 -m torch.distributed.launch \
+OMP_NUM_THREADS=1 python3 -m torch.distributed.run \
   run_pretraining.py \
   --data_path ${DATA_PATH} \
+  --csv_path ${CSV_PATH} \
   --output_dir ${OUTPUT_DIR} \
-  --model cae_small_patch16_224_8k_vocab --discrete_vae_weight_path ${TOKENIZER_PATH} \
-  --batch_size 2 --lr 1.5e-3 --warmup_epochs 20 --epochs 800 \
+  --model cae_base_patch16_224_8k_vocab --discrete_vae_weight_path ${TOKENIZER_PATH} \
+  --batch_size 64 --lr 1.5e-3 --warmup_epochs 5 --epochs 10 \
   --clip_grad 3.0 --layer_scale_init_value 0.1 \
   --imagenet_default_mean_and_std \
   --color_jitter 0 \
@@ -30,8 +32,8 @@ OMP_NUM_THREADS=1 python3 -m torch.distributed.launch \
   --regressor_depth 4 \
   --decoder_depth 4 \
   --align_loss_weight 2 \
-  --device 'cpu' \
-  --num_workers=0
+  --device 'cuda' \
+  --num_workers=2 \
 
 
 # ============================ linear probing ============================
