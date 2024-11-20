@@ -26,7 +26,7 @@ def loss_selector(loss_type, pred, target):
     elif loss_type == 'kld':
         return F.kl_div(F.log_softmax(pred, dim=-1), F.softmax(target, dim=-1), reduction='mean')
 
-def train_one_epoch(model: torch.nn.Module, d_vae: torch.nn.Module,
+def train_one_epoch(model: torch.nn.Module,
                     data_loader: Iterable, optimizer: torch.optim.Optimizer,
                     device: torch.device, epoch: int, loss_scaler, max_norm: float = 0,
                     log_writer=None, lr_scheduler=None, start_steps=None,

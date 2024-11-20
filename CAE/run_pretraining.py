@@ -215,11 +215,6 @@ def main(args):
     # get dataset
     dataset_train = build_cae_pretraining_satellite_dataset(is_train=True, args=args)
 
-    # prepare discrete vae
-    d_vae = utils.create_d_vae(
-        weight_path=args.discrete_vae_weight_path, d_vae_type=args.discrete_vae_type,
-        device=device, image_size=args.second_input_size, args=args)
-
     if True:  # args.distributed:
         num_tasks = utils.get_world_size()
         global_rank = utils.get_rank()
@@ -292,7 +287,7 @@ def main(args):
             log_writer.set_step(epoch * num_training_steps_per_epoch)
                 
         train_stats = train_one_epoch(
-            model, d_vae, data_loader_train,
+            model, data_loader_train,
             optimizer, device, epoch, loss_scaler,
             args.clip_grad, log_writer=log_writer,
             start_steps=epoch * num_training_steps_per_epoch,
