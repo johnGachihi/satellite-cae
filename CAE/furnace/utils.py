@@ -30,6 +30,8 @@ from tensorboardX import SummaryWriter
 import torch.nn.functional as F
 from torch.nn.modules.batchnorm import _NormBase
 
+import wandb
+
 
 class SmoothedValue(object):
     """Track a series of values and provide access to smoothed values over a
@@ -200,6 +202,36 @@ class TensorboardLogger(object):
     def flush(self):
         self.writer.flush()
 
+    def finish(self):
+        return
+
+
+class WandbLogger(object):
+    def __init__(self, project, name=None, entity=None):
+        wandb.init(reinit=True, project=project, name=name, entity=entity)
+        self.step = 0
+
+    def set_step(self, step=None):
+        if step is not None:
+            self.step = step
+        else:
+            self.step += 1
+
+    def update(self, **kwargs):
+        for k, v in kwargs.items():
+            if v is None:
+                continue
+            if isinstance(v, torch.Tensor):
+                v = v.item()
+
+            wandb.log({k: v})
+
+    def flush(self):
+        return
+
+    def finish(self):
+        wandb.finish()
+            
 
 def _load_checkpoint_for_ema(model_ema, checkpoint):
     """

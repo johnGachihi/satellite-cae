@@ -34,6 +34,7 @@ OMP_NUM_THREADS=1 python3 -m torch.distributed.run \
   --align_loss_weight 2 \
   --device 'cuda' \
   --num_workers=2 \
+  --log_dir log_dir
 
 
 # ============================ linear probing ============================

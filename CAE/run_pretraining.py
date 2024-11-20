@@ -168,6 +168,10 @@ def get_args():
     parser.add_argument('--dropped_bands', type=int, nargs='+', default=None,
                         help="Which bands (0 indexed) to drop from sentinel data.")
 
+    # WandB
+    parser.add_argument('--wandb_project', type=str, default='satellite-cae-pretraining')
+    parser.add_argument('--wandb_entity', type=str, default=None)
+
     return parser.parse_args()
 
 
@@ -230,7 +234,7 @@ def main(args):
 
     if global_rank == 0 and args.log_dir is not None:
         os.makedirs(args.log_dir, exist_ok=True)
-        log_writer = utils.TensorboardLogger(log_dir=args.log_dir)
+        log_writer = utils.WandbLogger(name=args.exp_name, project=args.wandb_project, entity=args.wandb_entity)
     else:
         log_writer = None
 
@@ -312,6 +316,7 @@ def main(args):
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     print('Training time {}'.format(total_time_str))
+    log_writer.finish()
 
 
 if __name__ == '__main__':
