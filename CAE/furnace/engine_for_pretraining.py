@@ -51,20 +51,20 @@ def train_one_epoch(model: torch.nn.Module,
 
         samples, bool_masked_pos = batch
 
-        # images = images.to(device, non_blocking=True)
         samples = samples.to(device, non_blocking=True)
         bool_masked_pos = bool_masked_pos.to(device, non_blocking=True)
+        bool_masked_pos = bool_masked_pos.flatten(1).to(torch.bool)
 
         with torch.cuda.amp.autocast():
             outputs, latent, latent_target = model(samples, bool_masked_pos=bool_masked_pos, return_all_tokens=False)
 
-            bool_masked_pos_reshaped = bool_masked_pos.reshape(outputs.shape[0], -1)
-
-            # TODO arg-ize c
-            labels = patchify(samples, c=13)[bool_masked_pos_reshaped == 0].reshape(outputs.shape)
-
+            # TODO arg-ize c            
+            labels = patchify(samples, c=13)
+            labels = labels[bool_masked_pos]
+            
+            # loss_main = nn.CrossEntropyLoss()(input=outputs, target=labels)
             loss_main = ((labels - outputs) ** 2).mean(axis=-1)
-            loss_main = loss_main.sum() / bool_masked_pos.sum() 
+            loss_main = loss_main.sum()
             loss_align = args.align_loss_weight * loss_selector('mse', latent.float(), latent_target.detach().float())
             loss = loss_main + loss_align
 

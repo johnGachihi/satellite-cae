@@ -106,7 +106,7 @@ class VisionTransformerForMaskedImageModeling(nn.Module):
         Alignment constraint
         '''
         with torch.no_grad():
-            latent_target = self.teacher(x, bool_masked_pos=(1 -bool_masked_pos))
+            latent_target = self.teacher(x, bool_masked_pos=(~bool_masked_pos))
             latent_target = latent_target[:, 1:, :] # remove class token
             if self.encoder_to_decoder is not None:
                 latent_target = self.encoder_to_decoder_norm(self.encoder_to_decoder(latent_target.detach()))
@@ -126,11 +126,10 @@ class VisionTransformerForMaskedImageModeling(nn.Module):
         pos_embed = self.encoder.build_2d_sincos_position_embedding(dim, use_cls_token=True).expand(batch_size, self.num_patches+1, dim).cuda(x_unmasked.device)
 
         # pos embed for masked patches
-        bool_masked_pos_reshaped = bool_masked_pos.reshape(b, -1)
-        pos_embed_masked = pos_embed[:,1:][bool_masked_pos_reshaped == 0].reshape(batch_size, -1, dim) 
+        pos_embed_masked = pos_embed[:,1:][bool_masked_pos].reshape(batch_size, -1, dim) 
 
         # pos embed for unmasked patches
-        pos_embed_unmasked = pos_embed[:,1:][bool_masked_pos_reshaped == 1].reshape(batch_size, -1, dim) 
+        pos_embed_unmasked = pos_embed[:,1:][~bool_masked_pos].reshape(batch_size, -1, dim) 
 
         # masked embedding '''
         x_masked = self.mask_token.expand(batch_size, num_masked_patches, -1)
@@ -138,7 +137,7 @@ class VisionTransformerForMaskedImageModeling(nn.Module):
         logits, latent_pred = self.pretext_neck(x_masked, x_unmasked, pos_embed_masked, pos_embed_unmasked, bool_masked_pos)
         # [b, num_masked_patches, patch_size^2 * channels]
         
-        # logits = logits.view(-1, logits.shape[2])
+        logits = logits.view(-1, logits.shape[2])
 
         return logits, latent_pred, latent_target
 
