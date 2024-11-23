@@ -19,23 +19,14 @@ def preprocess_vqgan(x):
 
 class DataAugmentationForCAE(object):
     def __init__(self, args):
-        mean = (1370.19151926, 1184.3824625 , 1120.77120066, 1136.26026392,
+        self.mean = (1370.19151926, 1184.3824625 , 1120.77120066, 1136.26026392,
                  1263.73947144, 1645.40315151, 1846.87040806, 1762.59530783,
                  1972.62420416,  582.72633433,   14.77112979, 1732.16362238, 1247.91870117)
-        std = (633.15169573,  650.2842772 ,  712.12507725,  965.23119807,
+        self.std = (633.15169573,  650.2842772 ,  712.12507725,  965.23119807,
                 948.9819932 , 1108.06650639, 1258.36394548, 1233.1492281 ,
                 1364.38688993,  472.37967789,   14.3114637 , 1310.36996126, 1087.6020813)
 
-        self.transform = transforms.Compose([
-            SentinelNormalize(mean, std),
-            transforms.ToTensor(),
-            transforms.RandomHorizontalFlip(),
-            transforms.RandomResizedCrop(
-                args.input_size,
-                scale=(0.2, 1.0),
-                interpolation=transforms.InterpolationMode.BICUBIC
-            ),
-        ])
+        self.args = args
         
         if args.mask_generator == 'block':
             self.masked_position_generator = MaskingGenerator(
@@ -50,12 +41,22 @@ class DataAugmentationForCAE(object):
         
 
     def __call__(self, image):
-        return self.transform(image), self.masked_position_generator()
+        image = SentinelNormalize(self.mean, self.std)(image)
+        image = transforms.ToTensor()(image)
+        image = transforms.RandomHorizontalFlip()(image)
+        image = transforms.RandomResizedCrop(
+            self.args.input_size,
+            scale=(0.2, 1.0),
+            interpolation=transforms.InterpolationMode.BICUBIC
+        )(image)
+        
+        return image, self.masked_position_generator()
     
 
     def __repr__(self):
         repr = "(DataAugmentationForCAE,\n"
-        repr += "  transform = %s,\n" % str(self.transform)
+        # TODO
+        # repr += "  transform = %s,\n" % str(self.transform)
         repr += "  Masked position generator = %s,\n" % str(self.masked_position_generator)
         repr += ")"
         return repr

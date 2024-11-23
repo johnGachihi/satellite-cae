@@ -268,48 +268,6 @@ CATEGORIES = ["airport", "airport_hangar", "airport_terminal", "amusement_park",
               "tower", "tunnel_opening", "waste_disposal", "water_treatment_facility",
               "wind_farm", "zoo"]
 
-
-class SatelliteDataset(VisionDataset):
-    """Abstract class"""
-    
-    def __init__(self, in_c, root, transform=None, target_transform=None):
-        super(SatelliteDataset, self).__init__(root, transform=transform,
-                                            target_transform=target_transform)
-        
-        self.in_c = in_c
-
-    @staticmethod
-    def build_transform(is_train, input_size, mean, std):
-        interpol_mode = transforms.InterpolationMode.BICUBIC
-
-        t = []
-        if is_train:
-            t.append(transforms.ToTensor())
-            t.append(transforms.Normalize(mean, std))
-            t.append(
-                transforms.RandomResizedCrop(input_size, scale=(0.2, 1.0), interpolation=interpol_mode),  # 3 is bicubic
-            )
-            t.append(transforms.RandomHorizontalFlip())
-            return transforms.Compose(t)
-
-        # eval transform
-        if input_size <= 224:
-            crop_pct = 224 / 256
-        else:
-            crop_pct = 1.0
-        size = int(input_size / crop_pct)
-
-        t.append(transforms.ToTensor())
-        t.append(transforms.Normalize(mean, std))
-        t.append(
-            transforms.Resize(size, interpolation=interpol_mode),  # to maintain same ratio w.r.t. 224 images
-        )
-        t.append(transforms.CenterCrop(input_size))
-
-        # t.append(transforms.Normalize(mean, std))
-        return transforms.Compose(t)
-
-
 class SentinelNormalize:
     """
     Normalization for Sentinel-2 imagery, inspired from
@@ -327,7 +285,7 @@ class SentinelNormalize:
         return img
 
     
-class SentinelIndividualImageDataset(SatelliteDataset):
+class SentinelIndividualImageDataset(VisionDataset):
     label_types = ['value', 'one-hot']
     mean = [1370.19151926, 1184.3824625 , 1120.77120066, 1136.26026392,
             1263.73947144, 1645.40315151, 1846.87040806, 1762.59530783,
@@ -356,7 +314,7 @@ class SentinelIndividualImageDataset(SatelliteDataset):
         :param masked_bands: List of indices corresponding to which bands to mask out
         :param dropped_bands:  List of indices corresponding to which bands to drop from input image tensor
         """
-        super(SentinelIndividualImageDataset, self).__init__(in_c=13, root=root, transform=transform)
+        super(SentinelIndividualImageDataset, self).__init__(root=root, transform=transform, target_transform=None)
         self.df = pd.read_csv(csv_path) \
             .sort_values(['category', 'location_id', 'timestamp'])
 
@@ -391,10 +349,6 @@ class SentinelIndividualImageDataset(SatelliteDataset):
 
     def open_image(self, img_path):
         with rasterio.open(img_path) as data:
-            # img = data.read(
-            #     out_shape=(data.count, self.resize, self.resize),
-            #     resampling=Resampling.bilinear
-            # )
             img = data.read()  # (c, h, w)
 
         return img.transpose(1, 2, 0).astype(np.float32)  # (h, w, c)
@@ -407,52 +361,20 @@ class SentinelIndividualImageDataset(SatelliteDataset):
         """
         selection = self.df.iloc[idx]
 
+        # TODO arg-ize path
         images = self.open_image(f"/home/ubuntu/satellite-cae/SatMAE/data/fmow-sentinel/{selection['image_path']}")  # (h, w, c)
+        
         if self.masked_bands is not None:
+            raise NotImplementedError
             images[:, :, self.masked_bands] = np.array(self.mean)[self.masked_bands]
 
         labels = self.categories.index(selection['category'])
 
-        img_as_tensor = self.transform(images)  # (c, h, w)
+        sample = self.transform(images)  # (c, h, w)
+        
         if self.dropped_bands is not None:
-            keep_idxs = [i for i in range(img_as_tensor.shape[0]) if i not in self.dropped_bands]
-            img_as_tensor = img_as_tensor[keep_idxs, :, :]
+            raise NotImplementedError  # sample type changed
+            keep_idxs = [i for i in range(sample.shape[0]) if i not in self.dropped_bands]
+            sample = sample[keep_idxs, :, :]
 
-        sample = {
-            'images': images,
-            'labels': labels,
-            'image_ids': selection['image_id'],
-            'timestamps': selection['timestamp']
-        }
-        return img_as_tensor, labels
-
-    @staticmethod
-    def build_transform(is_train, input_size, mean, std):
-        # train transform
-        interpol_mode = transforms.InterpolationMode.BICUBIC
-
-        t = []
-        if is_train:
-            t.append(SentinelNormalize(mean, std))  # use specific Sentinel normalization to avoid NaN
-            t.append(transforms.ToTensor())
-            t.append(
-                transforms.RandomResizedCrop(input_size, scale=(0.2, 1.0), interpolation=interpol_mode),  # 3 is bicubic
-            )
-            t.append(transforms.RandomHorizontalFlip())
-            return transforms.Compose(t)
-
-        # eval transform
-        if input_size <= 224:
-            crop_pct = 224 / 256
-        else:
-            crop_pct = 1.0
-        size = int(input_size / crop_pct)
-
-        t.append(SentinelNormalize(mean, std))
-        t.append(transforms.ToTensor())
-        t.append(
-            transforms.Resize(size, interpolation=interpol_mode),  # to maintain same ratio w.r.t. 224 images
-        )
-        t.append(transforms.CenterCrop(input_size))
-
-        return transforms.Compose(t)
+        return sample, labels
