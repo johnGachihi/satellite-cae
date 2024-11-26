@@ -27,6 +27,7 @@ from util.datasets import build_fmow_dataset
 from util.misc import NativeScalerWithGradNormCount as NativeScaler
 
 import models_mae
+import models_cae
 import models_mae_group_channels
 import models_mae_temporal
 
@@ -42,7 +43,7 @@ def get_args_parser():
                         help='Accumulate gradient iterations (for increasing the effective batch size under memory constraints)')
 
     # Model parameters
-    parser.add_argument('--model_type', default=None, choices=['group_c', 'temporal', 'vanilla'],
+    parser.add_argument('--model_type', default=None, choices=['cae', 'group_c', 'temporal', 'vanilla'],
                         help='Use channel model')
     parser.add_argument('--model', default='mae_vit_large_patch16', type=str, metavar='MODEL',
                         help='Name of model to train')
@@ -60,6 +61,9 @@ def get_args_parser():
     parser.add_argument('--norm_pix_loss', action='store_true',
                         help='Use (per-patch) normalized pixels as targets for computing loss')
     parser.set_defaults(norm_pix_loss=False)
+    
+    parser.add_argument('--cae_regressor_depth', default=4, type=int,
+                        help='CAE regressor depth')
 
     # Optimizer parameters
     parser.add_argument('--weight_decay', type=float, default=0.05,
@@ -190,6 +194,12 @@ def main(args):
     elif args.model_type == 'temporal':
         model = models_mae_temporal.__dict__[args.model](norm_pix_loss=args.norm_pix_loss)
     # non-spatial, non-temporal
+    elif args.model_type == 'cae':
+        model = models_cae.__dict__['cae_vit_base_patch16'](img_size=args.input_size,
+                                                patch_size=args.patch_size,
+                                                in_chans=dataset_train.in_c,
+                                                norm_pix_loss=args.norm_pix_loss,
+                                                regressor_depth=args.cae_regressor_depth)
     else:
         model = models_mae.__dict__[args.model](img_size=args.input_size,
                                                 patch_size=args.patch_size,
