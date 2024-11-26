@@ -1,0 +1,9 @@
+wandb
+pandas
+tensorboardX
+einops
+attrs
+rasterio
+timm
+
+conda install pytorch torchvision torchaudio cpuonly -c pytorch
