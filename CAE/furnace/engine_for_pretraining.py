@@ -20,6 +20,29 @@ def patchify(imgs, c, p=16):
     x = x.reshape(shape=(imgs.shape[0], h * w, p**2 * c))
     return x
 
+import torch
+
+def equal_width_binning(tensor, num_bins):
+    # Calculate min and max values
+    min_val = tensor.min()
+    max_val = tensor.max()
+    
+    # Create bin edges
+    bin_edges = torch.linspace(min_val, max_val, num_bins + 1).to(tensor.device)
+    
+    # Digitize the tensor into bins
+    # For each value, find the bin it belongs to using bucketization
+    binned = torch.bucketize(tensor, bin_edges, right=True)
+    
+    # Adjust indices to be 0-based
+    binned = binned - 1
+    
+    # Clamp values to ensure they're within valid range
+    binned = torch.clamp(binned, 0, num_bins - 1)
+    
+    return binned, bin_edges
+
+
 def loss_selector(loss_type, pred, target):
     if loss_type == 'mse':
         return F.mse_loss(pred, target, reduction="mean")
@@ -55,18 +78,34 @@ def train_one_epoch(model: torch.nn.Module,
         bool_masked_pos = bool_masked_pos.to(device, non_blocking=True)
         bool_masked_pos = bool_masked_pos.flatten(1).to(torch.bool)
 
-        with torch.cuda.amp.autocast():
-            outputs, latent, latent_target = model(samples, bool_masked_pos=bool_masked_pos, return_all_tokens=False)
+        # TODO arg-ize c            
+        labels = patchify(samples, c=13)[bool_masked_pos]  # [B * num_masked_patches, p**2 * c]
 
-            # TODO arg-ize c            
-            labels = patchify(samples, c=13)
-            labels = labels[bool_masked_pos]
+        with torch.cuda.amp.autocast():
+            outputs, latent, latent_target = model(samples, bool_masked_pos=bool_masked_pos)
+
+            # outputs, _ = equal_width_binning(outputs, 10)
+            # outputs = F.one_hot(outputs.flatten(), num_classes=10).float()
+            # labels, _ = equal_width_binning(labels, 10)
+            #labels = labels.flatten()
+            
+            # print(f"outputs {outputs.shape}")
+            # print(f"labels {labels.shape}")
+            # print(f"outputs {outputs[:20]}")
+            # import pdb; pdb.set_trace()
             
             # loss_main = nn.CrossEntropyLoss()(input=outputs, target=labels)
-            loss_main = ((labels - outputs) ** 2).mean(axis=-1)
-            loss_main = loss_main.sum()
+            # loss_main = nn.KLDivLoss()(outputs.float(), labels.float())
+            loss_main = F.mse_loss(outputs.float(), labels, reduction="mean") * 100
             loss_align = args.align_loss_weight * loss_selector('mse', latent.float(), latent_target.detach().float())
             loss = loss_main + loss_align
+
+        # print(f"latent {latent.flatten(1)[0, ::1000]}")
+        # print(f"latent_target {latent_target.flatten(1)[0, ::1000]}")
+        # print(f"outputs {outputs[::100, :]}")
+        # print(f"labels {labels[::100]}")
+#        print(f"outputs {outputs.mean(1)[:30]} labels {labels.mean(1)[:30]}")
+        # import pdb; pdb.set_trace()
 
         loss_value = loss.item()
         loss_main_value = loss_main.item()
@@ -112,8 +151,8 @@ def train_one_epoch(model: torch.nn.Module,
 
         if log_writer is not None:
             log_writer.update(loss=loss_value, head="loss")
-#            log_writer.update(loss=loss_main_value, head="loss_main")
-            log_writer.update(loss=loss_align_value, head="loss_align")
+            log_writer.update(loss_main=loss_main_value, head="loss_main")
+            log_writer.update(loss_align=loss_align_value, head="loss_align")
             log_writer.update(loss_scale=loss_scale_value, head="opt")
             log_writer.update(lr=max_lr, head="opt")
             log_writer.update(min_lr=min_lr, head="opt")

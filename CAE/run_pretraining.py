@@ -218,6 +218,7 @@ def main(args):
 
     # get dataset
     dataset_train = build_cae_pretraining_satellite_dataset(is_train=True, args=args)
+    dataset_train = torch.utils.data.Subset(dataset_train, indices=range(0, len(dataset_train), 10))
 
     if True:  # args.distributed:
         num_tasks = utils.get_world_size()

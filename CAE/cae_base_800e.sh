@@ -3,7 +3,7 @@ my_name=${tmp_my_name%.*}
 
 OUTPUT_DIR='./output/'$my_name
 DATA_PATH=/home/ubuntu/satellite-cae/SatMAE/data/fmow-sentinel/train
-CSV_PATH='/home/ubuntu/satellite-cae/SatMAE/data/sampled_by_location.csv'
+CSV_PATH='/home/ubuntu/satellite-cae/SatMAE/data/train_.csv'
 TOKENIZER_PATH=./dall_e_tokenizer_weight
 
 # ADDRESS=0
@@ -17,7 +17,7 @@ OMP_NUM_THREADS=1 python3 -m torch.distributed.run \
   --csv_path ${CSV_PATH} \
   --output_dir ${OUTPUT_DIR} \
   --model cae_base_patch16_224_8k_vocab --discrete_vae_weight_path ${TOKENIZER_PATH} \
-  --batch_size 64 --lr 1.5e-3 --warmup_epochs 5 --epochs 10 \
+  --batch_size 64 --lr 1.5e-3 --warmup_epochs 5 --epochs 50 \
   --clip_grad 3.0 --layer_scale_init_value 0.1 \
   --imagenet_default_mean_and_std \
   --color_jitter 0 \
@@ -26,15 +26,17 @@ OMP_NUM_THREADS=1 python3 -m torch.distributed.run \
   --mask_generator block \
   --num_mask_patches 98 \
   --decoder_layer_scale_init_value 0.1 \
-  --no_auto_resume \
-  --save_ckpt_freq 100 \
+  --save_ckpt_freq 1 \
   --exp_name $my_name \
   --regressor_depth 4 \
   --decoder_depth 4 \
   --align_loss_weight 2 \
   --device 'cuda' \
   --num_workers=2 \
-  --log_dir log_dir
+  --log_dir log_dir \
+ # --resume /home/ubuntu/satellite-cae/CAE/output/cae_base_800e/cae_base_800e_checkpoint-1.pth \
+ # --ratio_mask_patches 0.75
+ # --no_auto_resume
 
 
 # ============================ linear probing ============================
