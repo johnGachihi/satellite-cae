@@ -40,9 +40,10 @@ def train_one_epoch(model: torch.nn.Module,
         samples = samples.to(device, non_blocking=True)
 
         with torch.cuda.amp.autocast():
-            loss, _, _ = model(samples, mask_ratio=args.mask_ratio)
+            loss, loss_main, loss_align, _, _ = model(samples, mask_ratio=args.mask_ratio)
 
         loss_value = loss.item()
+        loss_main, loss_align = loss_main.item(), loss_align.item()
 
         if not math.isfinite(loss_value):
             print("Loss is {}, stopping training".format(loss_value))
@@ -58,24 +59,35 @@ def train_one_epoch(model: torch.nn.Module,
         torch.cuda.synchronize()
 
         metric_logger.update(loss=loss_value)
+        metric_logger.update(loss_main=loss_main)
+        metric_logger.update(loss_align=loss_align)
 
         lr = optimizer.param_groups[0]["lr"]
         metric_logger.update(lr=lr)
 
         loss_value_reduce = misc.all_reduce_mean(loss_value)
+        loss_main_value_reduce = misc.all_reduce_mean(loss_main)
+        loss_align_value_reduce = misc.all_reduce_mean(loss_align)
         if log_writer is not None and (data_iter_step + 1) % accum_iter == 0:
             """ We use epoch_1000x as the x-axis in tensorboard.
             This calibrates different curves when batch size changes.
             """
             epoch_1000x = int((data_iter_step / len(data_loader) + epoch) * 1000)
             log_writer.add_scalar('train_loss', loss_value_reduce, epoch_1000x)
+            log_writer.add_scalar('train_loss_main', loss_main_value_reduce, epoch_1000x)
+            log_writer.add_scalar('train_loss_align', loss_align_value_reduce, epoch_1000x)
             log_writer.add_scalar('lr', lr, epoch_1000x)
 
             # Wandb logging
             if args.local_rank == 0 and args.wandb is not None:
                 try:
-                    wandb.log({'train_loss_step': loss_value_reduce,
-                               'train_lr_step': lr, 'epoch_1000x': epoch_1000x})
+                    wandb.log({
+                        'train_loss_step': loss_value_reduce,
+                        'train_loss_main_step': loss_main_value_reduce,
+                        'train_loss_align_step': loss_align_value_reduce,
+                        'train_lr_step': lr,
+                        'epoch_1000x': epoch_1000x
+                    })
                 except ValueError:
                     pass
 
