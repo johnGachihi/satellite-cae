@@ -79,6 +79,39 @@ class BandsExtract(BaseTransform):
         return results
 
 
+
+@TRANSFORMS.register_module()
+class SatMAEResize(BaseTransform):
+    def __init__(self, first_crop_size=(96, 96), final_size=(224, 224)):
+        self.first_crop_size = first_crop_size
+        self.final_size = final_size
+
+    def transform(self, results):
+        results['img'] = F.resize(
+            img=results['img'],
+            size=self.first_crop_size,
+            interpolation=transforms.InterpolationMode.BICUBIC
+        )
+        results["gt_semantic_seg"] = F.resize(
+            img=results["gt_semantic_seg"].unsqueeze(0),
+            size=self.first_crop_size,
+            interpolation=transforms.InterpolationMode.NEAREST
+        )
+
+        results['img'] = F.resize(
+            img=results['img'],
+            size=self.final_size,
+            interpolation=transforms.InterpolationMode.BICUBIC
+        )
+        results["gt_semantic_seg"] = F.resize(
+            img=results["gt_semantic_seg"],
+            size=self.final_size,
+            interpolation=transforms.InterpolationMode.NEAREST
+        )
+
+        return results
+        
+
 @TRANSFORMS.register_module()
 class TorchRandomCrop(BaseTransform):
 
@@ -94,10 +127,47 @@ class TorchRandomCrop(BaseTransform):
         self.crop_size = crop_size
 
     def transform(self, results):
-        i, j, h, w = transforms.RandomCrop.get_params(results["img"], self.crop_size)
-        results["img"] = F.crop(results["img"], i, j, h, w).float()
-        results["gt_semantic_seg"] = F.crop(results["gt_semantic_seg"], i, j, h, w)
+        i, j, h, w = transforms.RandomResizedCrop.get_params(
+            results["img"],
+            scale=(0.03, 0.03),
+            ratio=(1, 1)
+        )
 
+        # print(f"TorchRandomCrop h {h} w {w}")
+        
+        results["img"] = F.resized_crop(
+            results["img"],
+            i, j, h, w,
+            self.crop_size,
+            transforms.InterpolationMode.BICUBIC
+        ).float()
+        
+        results["gt_semantic_seg"] = F.resized_crop(
+            results["gt_semantic_seg"].unsqueeze(0),
+            i, j, h, w,
+            self.crop_size,
+            transforms.InterpolationMode.NEAREST
+        )
+
+        return results
+
+
+@TRANSFORMS.register_module()
+class SentinelNormalize(BaseTransform):
+    """
+    Normalization for Sentinel-2 imagery, inspired from
+    https://github.com/ServiceNow/seasonal-contrast/blob/8285173ec205b64bc3e53b880344dd6c3f79fa7a/datasets/bigearthnet_dataset.py#L111
+    """
+    def __init__(self, means, stds):
+        self.mean = np.array(means)
+        self.std = np.array(stds)
+
+    def transform(self, results):
+        min_value = self.mean - 2 * self.std
+        max_value = self.mean + 2 * self.std
+        results["img"] = (results["img"] - min_value) / (max_value - min_value) * 255.0
+        results["img"] = np.clip(results["img"], 0, 255).astype(np.uint8)
+        results["img_norm_cfg"] = dict(mean=self.mean, std=self.std)
         return results
 
 
@@ -434,8 +504,13 @@ class PackSegInputs_(BaseTransform):
         img = results["img"]
         packed_results["inputs"] = img
 
-        data_sample = SegDataSample()        
-        gt_sem_seg_data = dict(data=results["gt_semantic_seg"])
+        data_sample = SegDataSample()
+
+        gt_semantic_seg = results["gt_semantic_seg"]
+        if gt_semantic_seg.ndim == 2:  # If [H, W]
+            gt_semantic_seg = gt_semantic_seg.unsqueeze(0)  # Convert to [1, H, W]
+
+        gt_sem_seg_data = dict(data=gt_semantic_seg)
         data_sample.gt_sem_seg = PixelData(**gt_sem_seg_data)
         packed_results["data_samples"] = data_sample
 

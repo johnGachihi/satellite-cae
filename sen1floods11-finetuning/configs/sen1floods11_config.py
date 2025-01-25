@@ -1,5 +1,5 @@
 import os
-os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+# os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
 
 default_scope = "mmseg"
@@ -22,7 +22,7 @@ default_hooks = dict(
 wandb_kwargs = dict(
     project='mae-sen1floods11-finetuning',
     entity='johngachihi-carnegie-mellon-university',
-    #  name='your_run_name',
+    name='sen1floods11-pretrain-cae-3',
     resume='allow',
     dir='output'
 )
@@ -30,15 +30,12 @@ wandb_kwargs = dict(
 vis_backends = [
     dict(type='LocalVisBackend'), 
     dict(
-        type='WandbVisBackend',
-        init_kwargs=dict(wandb_kwargs)
+       type='WandbVisBackend',
+       init_kwargs=dict(wandb_kwargs)
     )
 ]
 visualizer = dict(
     type='SegLocalVisualizer', vis_backends=vis_backends, name='visualizer')
-
-# custom_hooks = [dict(type='WandbLoggerHook', interval=50)]
-
 
 
 log_level = "INFO"
@@ -50,8 +47,7 @@ custom_imports = dict(imports=["geospatial_fm"])
 
 ### Configs
 # Data
-# TO BE DEFINED BY USER: Data root to sen1floods11 downloaded dataset
-data_root = "/home/ubuntu/satellite-cae/data/sen1floods11"
+data_root = "/home/ubuntu/satellite-cae/SatMAE/data/sen1floods11"
 
 dataset_type = "GeospatialDataset"
 num_classes = 2
@@ -62,11 +58,21 @@ samples_per_gpu = 5
 CLASSES = (0, 1)
 
 img_norm_cfg = dict(
-    means=[0.14245495, 0.13921481, 0.12434631, 0.5, 0.5, 0.5, 0.5, 0.31420089, 0.5, 0.5, 0.20743526, 0.12046503, 0.5],
-    stds=[0.04036231, 0.04186983, 0.05267646, 0.5, 0.5, 0.5, 0.5, 0.0822221, 0.5, 0.5, 0.06834774, 0.05294205, 0.5],
+    means = [1370.19151926, 1184.3824625 , 1120.77120066, 1136.26026392,
+            1263.73947144, 1645.40315151, 1846.87040806, 1762.59530783,
+             1972.62420416,  582.72633433,   14.77112979, 1732.16362238, 1247.91870117],
+    stds = [633.15169573,  650.2842772 ,  712.12507725,  965.23119807,
+           948.9819932 , 1108.06650639, 1258.36394548, 1233.1492281 ,
+           1364.38688993,  472.37967789,   14.3114637 , 1310.36996126, 1087.6020813]
 )
-
 bands = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+
+# img_norm_cfg = dict(
+#     means=[0.14245495, 0.13921481, 0.12434631, 0.31420089, 0.20743526, 0.12046503],
+#     stds=[0.04036231, 0.04186983, 0.05267646, 0.0822221, 0.06834774, 0.05294205],
+# )
+
+# bands = [1, 2, 3, 8, 11, 12]
 tile_size = img_size
 orig_nsize = 512
 crop_size = (tile_size, tile_size)
@@ -87,7 +93,7 @@ ignore_index = 2
 label_nodata = -1
 image_nodata = -9999
 image_nodata_replace = 0
-constant = 0.0001
+constant = 1.0
 
 # Model
 # TO BE DEFINED BY USER: path to pretrained backbone weights
@@ -99,7 +105,7 @@ num_heads = 12
 tubelet_size = 1
 
 # TRAINING
-epochs = 100
+epochs = 50
 eval_epoch_interval = 5
 
 # TO BE DEFINED BY USER: Save directory
@@ -123,19 +129,20 @@ train_pipeline = [
         nodata_replace=ignore_index,
     ),
     dict(type="BandsExtract", bands=bands),
-    dict(type="ConstantMultiply", constant=constant),
+    dict(type="SentinelNormalize", **img_norm_cfg),
     dict(type="RandomFlip", prob=0.5),
     dict(type="ToTensor_", keys=["img", "gt_semantic_seg"]),
     # to channels first
     dict(type="TorchPermute", keys=["img"], order=(2, 0, 1)),
-    dict(type="TorchNormalize", **img_norm_cfg),
-    dict(type="TorchRandomCrop", crop_size=crop_size),
+    # dict(type="TorchNormalize", **img_norm_cfg),
+    # dict(type="TorchRandomCrop", crop_size=crop_size),
+    dict(type="SatMAEResize"),
     # dict(
     #     type="Reshape",
     #     keys=["img"],
     #     new_shape=(len(bands), num_frames, tile_size, tile_size),
     # ),
-    dict(type="Reshape", keys=["gt_semantic_seg"], new_shape=(1, tile_size, tile_size)),
+#    dict(type="Reshape", keys=["gt_semantic_seg"], new_shape=(1, tile_size, tile_size)),
     dict(type="CastTensor", keys=["gt_semantic_seg"], new_type="torch.LongTensor"),
     dict(type="PackSegInputs_"),
 ]
@@ -154,41 +161,38 @@ val_pipeline = [
         nodata_replace=ignore_index,
     ),
     dict(type="BandsExtract", bands=bands),
-    dict(type="ConstantMultiply", constant=constant),
+    # dict(type="ConstantMultiply", constant=constant),
+    dict(type="SentinelNormalize", **img_norm_cfg),
     dict(type="ToTensor_", keys=["img", "gt_semantic_seg"]),
     # to channels first
     dict(type="TorchPermute", keys=["img"], order=(2, 0, 1)),
-    dict(type="TorchNormalize", **img_norm_cfg),
-#     dict(type="TorchRandomCrop", crop_size=crop_size),
-#    dict(type="Reshape", keys=["gt_semantic_seg"], new_shape=(1, tile_size, tile_size)),
+    # dict(type="TorchNormalize", **img_norm_cfg),
+    # dict(type='Resize', scale=(tile_size, tile_size), keep_ratio=True),
+    # dict(type="TorchRandomCrop", crop_size=crop_size),
+    dict(type="SatMAEResize", final_size=(512, 512)),
     dict(type="CastTensor", keys=["gt_semantic_seg"], new_type="torch.LongTensor"),
     dict(type="PackSegInputs_", meta_keys=('img_id', 'img_path', 'ori_shape', 'img_shape',
                    'scale_factor')),
 ]
 
-
-test_pipeline = [
-    dict(
-        type="LoadGeospatialImageFromFile",
-        to_float32=False,
-        nodata=image_nodata,
-        nodata_replace=image_nodata_replace,
-    ),
-    dict(type="BandsExtract", bands=bands),
-    dict(type="ConstantMultiply", constant=constant),
-    dict(type="ToTensor_", keys=["img"]),
-    # to channels first
-    dict(type="TorchPermute", keys=["img"], order=(2, 0, 1)),
-    dict(type="TorchNormalize", **img_norm_cfg),
-    # dict(
-    #     type="Reshape",
-    #     keys=["img"],
-    #     new_shape=(len(bands), num_frames, -1, -1),
-    #     look_up={"2": 1, "3": 2},
-    # ),
-    dict(type="CastTensor", keys=["img"], new_type="torch.FloatTensor"),
-    dict(type="PackSegInputs_"),
-]
+# test_pipeline = [
+#     dict(
+#         type="LoadGeospatialImageFromFile",
+#         to_float32=False,
+#         nodata=image_nodata,
+#         nodata_replace=image_nodata_replace,
+#     ),
+#     dict(type="BandsExtract", bands=bands),
+#     dict(type="SentinelNormalize", **img_norm_cfg),
+#     dict(type="ToTensor_", keys=["img"]),
+#     # to channels first
+#     dict(type="TorchPermute", keys=["img"], order=(2, 0, 1)),
+#     dict(type="SatMAEResize", final_size=(512, 512)),
+#     dict(type="CastTensor", keys=["img"], new_type="torch.FloatTensor"),
+#     dict(type="PackSegInputs_", meta_keys=('img_id', 'img_path', 'ori_shape', 'img_shape',
+#                                             'scale_factor')),
+# ]
+test_pipeline = val_pipeline
 
 train_dataloader = dict(
     batch_size=samples_per_gpu,  # Number of samples per GPU
@@ -203,13 +207,10 @@ train_dataloader = dict(
             img_path='train/s2',
             seg_map_path='train/labelhand',
         ),
-        # img_dir=img_dir,
-        # ann_dir=ann_dir,
         img_suffix=img_suffix,
         seg_map_suffix=seg_map_suffix,
         pipeline=train_pipeline,  # Use your defined train pipeline
         ignore_index=ignore_index,
-        # split=splits["train"],    # Training split file path
     )
 )
 
@@ -226,14 +227,11 @@ val_dataloader = dict(
             img_path='val/s2',
             seg_map_path='val/labelhand',
         ),
-        # img_dir=img_dir,
-        # ann_dir=ann_dir,
         img_suffix=img_suffix,
         seg_map_suffix=seg_map_suffix,
-        pipeline=val_pipeline,   # Use your defined test pipeline for validation
+        pipeline=val_pipeline, 
         ignore_index=ignore_index,
-        # split=splits["val"],      # Validation split file path
-#        gt_seg_map_loader_cfg=dict(nodata=label_nodata, nodata_replace=ignore_index),
+        gt_seg_map_loader_cfg=dict(nodata=label_nodata, nodata_replace=ignore_index),
         metainfo=dict(classes=CLASSES)
     )
 )
@@ -251,13 +249,11 @@ test_dataloader = dict(
             img_path='test/s2',
             seg_map_path='test/labelhand',
         ),
-        # img_dir=img_dir,
-        # ann_dir=ann_dir,
         img_suffix=img_suffix,
         seg_map_suffix=seg_map_suffix,
         pipeline=test_pipeline,   # Use your defined test pipeline for testing
         ignore_index=ignore_index,
-        # split=splits["test"],     # Testing split file path
+        metainfo=dict(classes=CLASSES),
         gt_seg_map_loader_cfg=dict(nodata=label_nodata, nodata_replace=ignore_index),
     )
 )
@@ -273,7 +269,7 @@ test_evaluator = val_evaluator
 default_hooks = dict(
     checkpoint=dict(
         type='CheckpointHook',
-        interval=1,  # Save checkpoint every epoch
+        interval=10,  # Save checkpoint every epoch
         save_best='mIoU',  # Save the best model based on mIoU
         rule='greater'  # Higher mIoU is better
     )
@@ -284,44 +280,31 @@ default_hooks = dict(
 train_cfg = dict(type='EpochBasedTrainLoop', max_epochs=epochs, val_interval=1)
 val_cfg = dict(type='ValLoop')
 test_cfg = dict(type='TestLoop')
-# runner = dict(type="EpochBasedRunner", max_epochs=epochs)
 
+
+# Optimiser
 optim_wrapper = dict(
     type='OptimWrapper',
     optimizer=dict(
         type='AdamW',
-        lr=1.5e-5,
-        weight_decay=0.05,
+        lr=1e-4,
+        weight_decay=0.025,
         betas=(0.9, 0.999)
     ),
     clip_grad=None
 )
-# optimizer = dict(
-#     type="AdamW",
-#     lr=1.5e-5,
-#     weight_decay=0.05,
-#     betas=(0.9, 0.999),
-# )
-# optimizer_config = dict(grad_clip=None)
 
+# Scheduler
 param_scheduler = [
-    dict(type='LinearLR', start_factor=1e-6, by_epoch=False, begin=0, end=1500),
+    dict(type='LinearLR', start_factor=1e-6, by_epoch=False, begin=0, end=250),
     dict(
         type='PolyLR',
         eta_min=0.0,
+        # T_max=(epochs * 89) - 500,
         power=1.0,
-        begin=1500,
+        begin=250,
         by_epoch=False)
 ]
-# lr_config = dict(
-#     policy="poly",
-#    warmup="linear",
-#    warmup_iters=1500,
-#    warmup_ratio=1e-6,
-#    power=1.0,
-#    min_lr=0.0,
-#    by_epoch=False,
-#)
 
 log_config = dict(
     interval=10,
@@ -331,10 +314,10 @@ log_config = dict(
     ],
 )
 
-checkpoint_config = dict(by_epoch=True, interval=10, out_dir=save_path)
 
 workflow = [("train", 1), ("val", 1)]
 
+# TODO Revisit
 norm_cfg = dict(type="BN", requires_grad=True)
 
 ce_weights = [0.3, 0.7]
@@ -348,18 +331,12 @@ model = dict(
     ),
     backbone=dict(
         type="VisionTransformer_",
-        pretrained_weights="/home/ubuntu/satellite-cae/SatMAE/output_dir/checkpoint-99.pth",
+        # pretrained_weights="/home/ubuntu/checkpoint-98.pth",
+        # pretrained_weights="/home/ubuntu/checkpoint-100.pth",
+        # pretrained_weights="/home/ubuntu/satellite-cae/SatMAE/output_dir/checkpoint-4.pth",
         img_size=img_size,
         patch_size=patch_size,
-        # num_frames=num_frames,
-        # tubelet_size=1,
         in_chans=len(bands),
-        # embed_dims=embed_dim,
-        # feedforward_channels=embed_dim,
-        # num_layers=num_layers,
-        # num_heads=num_heads,
-        # mlp_ratio=4.0,
-        # norm_pix_loss=False,
     ),
     neck=dict(
         type="ConvTransformerTokensToEmbeddingNeck",
@@ -390,26 +367,27 @@ model = dict(
             reduction="sum"
         ),
     ),
-    # auxiliary_head=dict(
-    #     num_classes=num_classes,
-    #     in_channels=embed_dim,
-    #     ignore_index=ignore_index,
-    #     type="FCNHead",
-    #     in_index=-1,
-    #     channels=256,
-    #     num_convs=2,
-    #     concat_input=False,
-    #     dropout_ratio=0.1,
-    #     norm_cfg=norm_cfg,
-    #     align_corners=False,
-    #     loss_decode=dict(
-    #         type="CrossEntropyLoss",
-    #         use_sigmoid=False,
-    #         loss_weight=1,
-    #         class_weight=ce_weights,
-    #         avg_non_ignore=True,
-    #     ),
-    # ),
+    auxiliary_head=dict(
+        num_classes=num_classes,
+        in_channels=embed_dim,
+        ignore_index=ignore_index,
+        type="FCNHead_",
+        in_index=-1,
+        channels=256,
+        num_convs=2,
+        concat_input=False,
+        dropout_ratio=0.1,
+        norm_cfg=norm_cfg,
+        align_corners=False,
+        loss_decode=dict(
+            type="CrossEntropyLoss",
+            use_sigmoid=False,
+            loss_weight=1,
+            class_weight=ce_weights,
+            avg_non_ignore=True,
+            reduction="sum",
+        ),
+    ),
     train_cfg=dict(),
     test_cfg=dict(
         mode="slide",

@@ -376,6 +376,7 @@ class ConvTransformerTokensToEmbeddingNeck(nn.Module):
         x = x.reshape((-1, self.output_embed_dim, self.H_out, self.W_out))
 
         out = tuple([x])
+
         return out
 
 
@@ -589,6 +590,29 @@ class VisionTransformer_(timm.models.vision_transformer.VisionTransformer):
             # assert set(msg.missing_keys) == {'head.weight', 'head.bias', 'fc_norm.weight', 'fc_norm.bias'}
             
             # trunc_normal_(model.head.weight, std=2e-5)
+
+            # self._freeze_network_parameters()
+        
+    def _freeze_network_parameters(self):
+        """
+        Implementation of systematic parameter freezing methodology.
+        Includes verification and logging protocols.
+        """
+        frozen_params = 0
+        total_params = 0
+        
+        # Implement freezing protocol
+        for name, param in self.named_parameters():
+            param.requires_grad = False
+            frozen_params += param.numel()
+            total_params += param.numel()
+            
+        # Log freezing status
+        print(f"\nParameter Freezing Analysis:")
+        print(f"Total Parameters: {total_params:,}")
+        print(f"Frozen Parameters: {frozen_params:,}")
+        print(f"Freezing Status: {'Verified' if frozen_params == total_params else 'Incomplete'}")
+        
             
             
     def forward_features(self, x):

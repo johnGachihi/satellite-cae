@@ -61,6 +61,8 @@ def get_args_parser():
     parser.add_argument('--drop_path', type=float, default=0.1, metavar='PCT',
                         help='Drop path rate (default: 0.1)')
 
+    parser.add_argument('--freeze_encoder', action='store_true')
+
     # Optimizer parameters
     parser.add_argument('--clip_grad', type=float, default=None, metavar='NORM',
                         help='Clip gradient norm (default: None, no clipping)')
@@ -148,7 +150,7 @@ def get_args_parser():
     parser.add_argument('--seed', default=0, type=int)
     parser.add_argument('--resume', default='',
                         help='resume from checkpoint')
-    parser.add_argument('--save_every', type=int, default=1, help='How frequently (in epochs) to save ckpt')
+    parser.add_argument('--save_every', type=int, default=10, help='How frequently (in epochs) to save ckpt')
     parser.add_argument('--wandb', type=str, default=None,
                         help="Wandb project name, eg: sentinel_finetune")
 
@@ -307,6 +309,13 @@ def main(args):
             print(set(msg.missing_keys))
             # assert set(msg.missing_keys) == {'head.weight', 'head.bias'}
 
+        if args.freeze_encoder:
+            for param in model.parameters():
+                param.requires_grad = False
+
+            for param in model.head.parameters():
+                param.requires_grad = True
+                
         # manually initialize fc layer
         trunc_normal_(model.head.weight, std=2e-5)
 

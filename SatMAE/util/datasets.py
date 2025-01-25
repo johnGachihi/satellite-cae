@@ -487,7 +487,7 @@ class SentinelIndividualImageDataset(SatelliteDataset):
         t.append(SentinelNormalize(mean, std))
         t.append(transforms.ToTensor())
         t.append(
-            transforms.Resize(size, interpolation=interpol_mode),  # to maintain same ratio w.r.t. 224 images
+            transforms.Resize((224, 224), interpolation=interpol_mode),  # to maintain same ratio w.r.t. 224 images
         )
         t.append(transforms.CenterCrop(input_size))
 
